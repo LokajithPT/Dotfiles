@@ -114,3 +114,14 @@ alias spk="pactl set-default-sink alsa_output.usb-Jieli_Technology_USB_Composite
 
 # The Fuck configuration
 eval $(thefuck --alias)
+
+# Toggle comment on current line (Ctrl+/)
+toggle_comment() {
+    if [[ "$BUFFER" =~ ^# ]]; then
+        BUFFER="${BUFFER:1}"
+    else
+        BUFFER="#$BUFFER"
+    fi
+}
+zle -N toggle_comment
+bindkey '^_' toggle_comment
