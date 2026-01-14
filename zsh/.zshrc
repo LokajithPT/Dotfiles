@@ -73,6 +73,7 @@ alias po='$aurhelper -Qtdq | $aurhelper -Rns -' # remove unused packages, also t
 alias vc='code' # gui code editor
 alias cdc="cd ~/code"
 alias lgit="lazygit"
+alias agent="cp ~/agent .  && cp ~/agent_prompt . "
 
 # Directory navigation shortcuts
 alias ..='cd ..'
@@ -85,6 +86,7 @@ alias sl='ls'
 alias back="cd .. && ls " 
 alias insta="instagram-cli chat "
 alias s="ls"
+alias kawka="czkawka-cli"
 
 #Always mkdir a path (this doesn't inhibit functionality to make a single dir)
 alias mkdir='mkdir -p'
