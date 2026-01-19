@@ -372,22 +372,6 @@ end },
     -- DAP
     { "mfussenegger/nvim-dap" },
 
-{
-    "mrcjkb/rustaceanvim",
-    version = "^4",
-    ft = { "rust" },
-    config = function() 
-        vim.g.rustaceanvim = {
-            server = {
-                on_attach = function(_, bufnr) 
-                    vim.keymap.set("n", "<leader>ca", vim.lsp.buf.code_action, { buffer = bufnr })
-                end,
-            },
-            dap = {},
-        }
-    end,
-},
-
     -- Mason (LSP Installer)
 {
     "williamboman/mason.nvim",
@@ -406,6 +390,7 @@ end },
             vim.keymap.set("n", "gr", vim.lsp.buf.references, opts)
             vim.keymap.set("n", "K", vim.lsp.buf.hover, opts)
             vim.keymap.set("n", "<leader>rn", vim.lsp.buf.rename, opts)
+            vim.keymap.set("n", "<leader>ca", vim.lsp.buf.code_action, opts)
         end
 
         local capabilities = require("cmp_nvim_lsp").default_capabilities()
@@ -455,6 +440,12 @@ end },
                     })
                 end,
             },
+        })
+
+        -- Setup bacon-ls manually since it's not in mason-lspconfig's default handlers
+        require("lspconfig").bacon_ls.setup({
+            on_attach = on_attach,
+            capabilities = capabilities,
         })
     end,
 },

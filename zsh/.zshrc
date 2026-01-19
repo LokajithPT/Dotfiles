@@ -87,6 +87,7 @@ alias back="cd .. && ls "
 alias insta="instagram-cli chat "
 alias s="ls"
 alias kawka="czkawka-cli"
+alias ran="ranger . "
 
 #Always mkdir a path (this doesn't inhibit functionality to make a single dir)
 alias mkdir='mkdir -p'

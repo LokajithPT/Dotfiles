@@ -35,7 +35,7 @@ decoration {
     shadow:enabled = false
 
     blur {
-        enabled = yes
+        enabled = no  
         size = 5
         passes = 4
         new_optimizations = on
