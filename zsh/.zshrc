@@ -100,8 +100,8 @@ alias mkdir='mkdir -p'
 
 # Initialize zoxide
 eval "$(zoxide init zsh)"
-export ANDROID_HOME=/opt/android-sdk/
-export PATH="$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools/:$HOME/flutter/bin"
+export ANDROID_HOME=$HOME/Android/Sdk
+export PATH="$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools/:$HOME/tools/flutter/bin"
 export PATH="$PATH:$ANDROID_HOME/platform-tools"
 #export PATH="$PATH:/usr/lib/flutter/bin"
 
@@ -132,3 +132,7 @@ bindkey '^_' toggle_comment
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+export PATH=$JAVA_HOME/bin:$PATH
+export CHROME_EXECUTABLE=/usr/bin/brave

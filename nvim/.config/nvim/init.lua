@@ -400,35 +400,33 @@ end },
             automatic_installation = true,
             handlers = {
                 function(server_name) -- default handler
-                    require("lspconfig")[server_name].setup({
+                    local opts = {
                         on_attach = on_attach,
                         capabilities = capabilities,
-                    })
-                end,
-                clangd = function() 
-                    require("lspconfig").clangd.setup({
-                        on_attach = on_attach,
-                        capabilities = capabilities,
-                        cmd = { "clangd", "--background-index", "--clang-tidy" },
-                    })
-                end,
-                gopls = function() 
-                    require("lspconfig").gopls.setup({
-                        on_attach = on_attach,
-                        capabilities = capabilities,
-                        settings = {
+                    }
+
+                    if server_name == "rust_analyzer" then
+                        opts.settings = {
+                            ["rust-analyzer"] = {
+                                checkOnSave = { allTargets = false },
+                                check = { command = "check" },
+                                lru = { capacity = 32 },
+                                procMacro = { enable = true },
+                                diagnostics = { disabled = {"unresolved-proc-macro"} },
+                                files = { watcher = "server" },
+                            },
+                        }
+                    elseif server_name == "clangd" then
+                        opts.cmd = { "clangd", "--background-index", "--clang-tidy" }
+                    elseif server_name == "gopls" then
+                        opts.settings = {
                             gopls = {
                                 analyses = { unusedparams = true },
                                 staticcheck = true,
                             },
-                        },
-                    })
-                end,
-                 pyright = function()
-                    require("lspconfig").pyright.setup({
-                        on_attach = on_attach,
-                        capabilities = capabilities,
-                        settings = {
+                        }
+                    elseif server_name == "pyright" then
+                        opts.settings = {
                             python = {
                                 analysis = {
                                     autoSearchPaths = true,
@@ -437,15 +435,15 @@ end },
                                 }
                             }
                         }
-                    })
+                    end
+                    
+                    -- Attempt to use the server setup safely
+                    local lsp_valid, lsp_server = pcall(function() return require("lspconfig")[server_name] end)
+                    if lsp_valid and lsp_server then
+                        lsp_server.setup(opts)
+                    end
                 end,
             },
-        })
-
-        -- Setup bacon-ls manually since it's not in mason-lspconfig's default handlers
-        require("lspconfig").bacon_ls.setup({
-            on_attach = on_attach,
-            capabilities = capabilities,
         })
     end,
 },
