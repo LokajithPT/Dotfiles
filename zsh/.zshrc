@@ -88,6 +88,8 @@ alias insta="instagram-cli chat "
 alias s="ls"
 alias kawka="czkawka-cli"
 alias ran="ranger . "
+alias fanon="~/tools/isw/isw -b on "
+alias fanoff="~/tools/isw/isw -b off"
 
 #Always mkdir a path (this doesn't inhibit functionality to make a single dir)
 alias mkdir='mkdir -p'
