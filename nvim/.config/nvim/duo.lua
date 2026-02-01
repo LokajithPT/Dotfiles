@@ -3,101 +3,69 @@ local M = {}
 local timer = nil
 local heartbeat_interval = 10000 -- 10 seconds in milliseconds
 
--- Keystroke tracking
-local keystroke_count = 0
-local last_heartbeat_time = 0
-
--- Track keystrokes
-local function track_keystroke()
-    keystroke_count = keystroke_count + 1
-    vim.g.duo_keystrokes_current = keystroke_count
-end
-
--- Auto-setup keystroke tracking
-vim.api.nvim_create_autocmd({"InsertEnter", "CmdlineEnter"}, {
-    callback = function()
-        vim.api.nvim_create_autocmd({"TextChanged", "TextChangedI", "TextChangedP"}, {
-            buffer = vim.api.nvim_get_current_buf(),
-            callback = track_keystroke,
-        })
-    end,
-})
-
-local function send_keystrokes()
-    if keystroke_count > 0 then
-        local cmd = {
-            'curl', '-s', '-X', 'POST',
-            '-H', 'Content-Type: application/json',
-            '-d', vim.fn.json_encode({keystrokes = keystroke_count}),
-            'http://localhost:8080/api/keystrokes'
-        }
-        
-        vim.fn.jobstart(cmd, {
-            on_exit = vim.schedule_wrap(function(job_id, code, event)
-                if code == 0 then
-                    keystroke_count = 0
-                    vim.g.duo_keystrokes_sent = (vim.g.duo_keystrokes_sent or 0) + keystroke_count
-                else
-                    vim.notify("Failed to send keystrokes to server", vim.log.levels.WARN, {title = "Duo"})
-                end
-            end)
-        })
-    end
-end
-
--- Temporary placeholder - will be defined after profile_window_state
-
-
 local function send_heartbeat()
-    local current_time = os.time()
-    
-    -- Send keystrokes every 30 seconds
-    if current_time - last_heartbeat_time >= 30 then
-        send_keystrokes()
-        last_heartbeat_time = current_time
-    end
-    
-    -- Fetch dashboard data
-    -- Fetch dashboard data
-    M.fetch_dashboard_data()
-    
-    -- Also check simple heartbeat
     local cmd = {'wget', '-qO-', 'http://localhost:8080/heartbeat'}
-    local job_stdout_buffer = {}
+    local job_stdout_buffer = {} -- Buffer to collect stdout
 
     vim.fn.jobstart(cmd, {
         on_stdout = vim.schedule_wrap(function(err, data, event)
             if data then
                 for _, line in ipairs(data) do
-                    if line then
+                    if line then -- Include empty lines here, filter later
                         table.insert(job_stdout_buffer, line)
                     end
                 end
             end
         end),
+        on_stderr = vim.schedule_wrap(function(err, data, event)
+            local filtered_stderr_data = {}
+            if data then
+                for _, line in ipairs(data) do
+                    if line and line ~= "" then
+                        table.insert(filtered_stderr_data, line)
+                    end
+                end
+            end
+
+            if #filtered_stderr_data > 0 then
+                vim.notify("Heartbeat failed (stderr): " .. table.concat(filtered_stderr_data), vim.log.levels.ERROR, {title = "Duo Heartbeat"})
+                vim.g.duo_server_status = "ERROR"
+            end
+        end),
         on_exit = vim.schedule_wrap(function(job_id, code, event)
             local filtered_data = {}
             for _, line in ipairs(job_stdout_buffer) do
-                if line and line ~= "" then
+                if line and line ~= "" then -- Now filter empty lines from the collected buffer
                     table.insert(filtered_data, line)
                 end
             end
 
             if #filtered_data > 0 then
                 local raw_json_response = table.concat(filtered_data)
+                local ok_to_ping = false
                 local success, response_table = pcall(vim.fn.json_decode, raw_json_response)
                 
                 if success and response_table and response_table.status == "OK" then
+                    ok_to_ping = true
+                end
+
+                if ok_to_ping then
+                    vim.notify("Server pinged!", vim.log.levels.INFO, {title = "Duo Heartbeat"})
                     vim.g.duo_server_status = "ACTIVE"
                 else
+                    vim.notify("Heartbeat failed: Server response was not OK or invalid JSON. Response: " .. raw_json_response, vim.log.levels.ERROR, {title = "Duo Heartbeat"})
                     vim.g.duo_server_status = "WARNING"
                 end
             else
+                vim.notify("Heartbeat failed: Server did not respond or empty response (after filtering).", vim.log.levels.ERROR, {title = "Duo Heartbeat"})
                 vim.g.duo_server_status = "INACTIVE"
             end
 
             if code ~= 0 then
-                vim.g.duo_server_status = "INACTIVE"
+                if not (#filtered_data > 0 and ok_to_ping) then 
+                    vim.notify("Heartbeat failed: Command exited with code " .. code .. ".", vim.log.levels.ERROR, {title = "Duo Heartbeat"})
+                    vim.g.duo_server_status = "INACTIVE"
+                end
             end
         end)
     })
@@ -231,63 +199,12 @@ local profile_window_state = {
     tabs_content = nil, -- Will be set dynamically
 }
 
-function M.fetch_dashboard_data()
-    local cmd = {'curl', '-s', 'http://localhost:8080/api/dashboard'}
-    local job_stdout_buffer = {}
-
-    vim.fn.jobstart(cmd, {
-        on_stdout = vim.schedule_wrap(function(err, data, event)
-            if data then
-                for _, line in ipairs(data) do
-                    if line and line ~= "" then
-                        table.insert(job_stdout_buffer, line)
-                    end
-                end
-            end
-        end),
-        on_exit = vim.schedule_wrap(function(job_id, code, event)
-            if code == 0 and #job_stdout_buffer > 0 then
-                local raw_json = table.concat(job_stdout_buffer)
-                local success, data = pcall(vim.fn.json_decode, raw_json)
-                
-                if success and data then
-                    -- Update global variables for use in profile window
-                    vim.g.duo_current_streak = data.user.currentStreak or 0
-                    vim.g.duo_keystrokes_today = data.user.keystrokesToday or 0
-                    vim.g.duo_current_level = data.user.currentLevel or 1
-                    vim.g.duo_freezes_left = data.user.freezesLeft or 0
-                    vim.g.duo_streak_status = data.user.streakStatus or "pending"
-                    vim.g.duo_projects = data.projects or {}
-                    vim.g.duo_tasks = data.tasks or {}
-                    vim.g.duo_activities = data.activities or {}
-                    
-                    vim.g.duo_server_status = "ACTIVE"
-                    
-                    -- Force profile window to refresh if open
-                    if profile_window_state.win_id and vim.api.nvim_win_is_valid(profile_window_state.win_id) then
-                        if profile_window_state.update_content_fn then
-                            profile_window_state.update_content_fn()
-                        end
-                    end
-                end
-            else
-                vim.g.duo_server_status = "ERROR"
-            end
-        end)
-    })
-end
-
-    local function get_profile_tab_lines(tab_idx, win_width)
-        local header_lines = {}
-        
-        -- Add top border with rounded corners
-        table.insert(header_lines, "╔" .. string.rep("═", win_width - 2) .. "╗")
-        
-        -- Add empty line for spacing
-        table.insert(header_lines, "║" .. string.rep(" ", win_width - 2) .. "║")
-        
-        local tab_header = ""
-        local total_tab_width = win_width - 2
+local function get_profile_tab_lines(tab_idx, win_width)
+    local header_lines = {
+        "┌" .. string.rep("─", win_width - 2) .. "┐",
+    }
+    local tab_header = ""
+    local total_tab_width = win_width - 2 -- width for tab names excluding outer borders
 
     local tab_widths = {}
     local remaining_width = total_tab_width - ( #profile_window_state.tab_names * 2 ) -- account for 2 chars for separators
@@ -326,9 +243,9 @@ end
         table.insert(formatted_content, "│ " .. trimmed_line .. string.rep(" ", math.max(0, content_width - #trimmed_line)) .. " │")
     end
 
-    local footer_line = "╚" .. string.rep("═", win_width - 2) .. "╝"
+    local footer_line = "╰" .. string.rep("─", win_width - 2) .. "╯"
 
-    return vim.list_extend(header_lines, formatted_content, {footer_line})
+    return vim.list_extend(vim.list_extend(header_lines, formatted_content), {footer_line})
 end
 
 function M.show_profile_window()
@@ -339,119 +256,41 @@ function M.show_profile_window()
         return -- Close existing window if re-called
     end
 
-    -- Generate dynamic content based on real data
-    local function generate_dynamic_content()
-        local current_streak = vim.g.duo_current_streak or 0
-        local keystrokes_today = vim.g.duo_keystrokes_today or 0
-        local current_level = vim.g.duo_current_level or 1
-        local freezes_left = vim.g.duo_freezes_left or 0
-        local streak_status = vim.g.duo_streak_status or "pending"
-        local projects = vim.g.duo_projects or {}
-        local tasks = vim.g.duo_tasks or {}
-        
-        profile_window_state.tabs_content = {
-            -- Tab 1: Streak & Approval
-            {
-                "",
-                "  ┌─────────────────────────────────────────────────────┐",
-                "  │ 🔥 STREAK & APPROVAL STATUS                   │",
-                "  ├─────────────────────────────────────────────────────┤",
-                "  │                                             │",
-                "  │  Current Streak:    " .. string.format("%-3d", current_streak) .. " days 🔥       │",
-                "  │  Status:           " .. string.format("%-12s", string.upper(streak_status)) .. "      │",
-                "  │  Freezes Left:     " .. string.format("%-3d", freezes_left) .. " 🧊          │",
-                "  │                                             │",
-                "  │  📊 TODAY'S STATS                          │",
-                "  │  Keystrokes:       " .. string.format("%-8d", keystrokes_today) .. "       │",
-                "  │  Level:            " .. string.format("%-3d", current_level) .. " ⭐          │",
-                "  │                                             │",
-                "  └─────────────────────────────────────────────────────┘",
-                "",
-            },
-            -- Tab 2: Project & Tasks
-            {
-                "",
-                "  ┌─────────────────────────────────────────────────────┐",
-                "  │ 💼 PROJECTS & TASKS                         │",
-                "  ├─────────────────────────────────────────────────────┤",
-                "  │                                             │",
-                "  │  Active Projects:  " .. string.format("%-2d", #projects) .. "              │",
-                "  │  Total Tasks:     " .. string.format("%-2d", #tasks) .. "              │",
-                "  │                                             │",
-            },
-            -- Tab 3: Today's Focus
-            {
-                "",
-                "  ┌─────────────────────────────────────────────────────┐",
-                "  │ 🎯 TODAY'S FOCUS                           │",
-                "  ├─────────────────────────────────────────────────────┤",
-                "  │                                             │",
-                "  │  Keep coding! You're doing great! 💪          │",
-                "  │                                             │",
-                "  │  Progress: " .. string.format("%-6.1f", (keystrokes_today / 100) * 100) .. "%     │",
-                "  │                                             │",
-                "  └─────────────────────────────────────────────────────┘",
-                "",
-            },
-        }
-        
-        -- Add project and task details
-        for _, project in ipairs(projects) do
-            table.insert(profile_window_state.tabs_content[2], "  │  • " .. string.format("%-36s", project.name) .. " │")
-        end
-        
-        if #tasks > 0 then
-            table.insert(profile_window_state.tabs_content[2], "  │                                             │")
-            table.insert(profile_window_state.tabs_content[2], "  │  📋 TASKS:                                 │")
-        end
-        
-        for _, task in ipairs(tasks) do
-            local status = task.completed and "✅" or "⭕"
-            local desc = string.sub(task.description, 1, 36)
-            if #task.description > 36 then desc = desc .. "..." end
-            table.insert(profile_window_state.tabs_content[2], "  │  " .. status .. " " .. string.format("%-36s", desc) .. " │")
-        end
-        
-        -- Add bottom border for Tab 2
-        table.insert(profile_window_state.tabs_content[2], "  │                                             │")
-        table.insert(profile_window_state.tabs_content[2], "  └─────────────────────────────────────────────────────┘")
-        
-        -- Add project details
-        for _, project in ipairs(projects) do
-            table.insert(profile_window_state.tabs_content[2], "  • " .. project.name)
-        end
-        
-        -- Add task details
-        table.insert(profile_window_state.tabs_content[2], "  Active Tasks:")
-        for _, task in ipairs(tasks) do
-            local status = task.completed and "[✓]" or "[ ]"
-            table.insert(profile_window_state.tabs_content[2], "    " .. status .. " " .. task.description)
-        end
-        
-        -- Fill remaining space
-        for i = #profile_window_state.tabs_content[2], 10 do
-            table.insert(profile_window_state.tabs_content[2], "")
-        end
-    end
-    
-    -- Call generate_dynamic_content every time profile window opens to get fresh data
-    local function refresh_profile_content()
-        if profile_window_state.win_id and vim.api.nvim_win_is_valid(profile_window_state.win_id) then
-            generate_dynamic_content()
-            if profile_window_state.update_content_fn then
-                profile_window_state.update_content_fn()
-            end
-        end
-    end
-    
-    generate_dynamic_content()
-    
-    -- Auto-refresh profile window content every 10 seconds
-    local refresh_timer = vim.loop.new_timer()
-    refresh_timer:start(10000, 10000, vim.schedule_wrap(refresh_profile_content))
+    profile_window_state.tabs_content = {
+        -- Tab 1: Streak & Approval
+        {
+            "  Streak:           7 Days",
+            "  Streak Freezes:   3 Left",
+            "",
+            "",
+            "",
+            "",
+            "",
+        },
+        -- Tab 2: Project & Tasks
+        {
+            "  Project:          Duolevelling CLI",
+            "  Tasks:",
+            "    [ ] Implement A Feature",
+            "    [ ] Fix Bug X",
+            "",
+            "",
+            "",
+        },
+        -- Tab 3: Today's Task
+        {
+            "  Today's Task:     Implement Floating Window",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        },
+    }
 
-    local win_width = 90 -- Much bigger width for better readability
-    local win_height = 15 -- Taller height for more content
+    local win_width = 70 -- Fixed width for aesthetic and tab headers
+    local win_height = 10 -- Height for content rows + 3 for header/footer
 
     profile_window_state.buf_id = vim.api.nvim_create_buf(false, {
         bufhidden = "wipe",
@@ -471,7 +310,7 @@ function M.show_profile_window()
         col = col,
         width = win_width,
         height = win_height,
-        border = "rounded", -- Sexy rounded border
+        border = "none", -- Border handled by content
         style = "minimal",
         focusable = true,
         noautocmd = true,
@@ -488,21 +327,10 @@ function M.show_profile_window()
 
     update_window_content()
 
-    -- Set highlighting for the floating window with sexy colors
-    vim.api.nvim_win_set_option(profile_window_state.win_id, "winhighlight", "Normal:NormalFloat,FloatBorder:FloatBorder")
-    
-    -- Define sexy highlight groups
-    vim.api.nvim_set_hl(0, "DuoNormal", {bg = "#1e1e2e", fg = "#ffffff"})
-    vim.api.nvim_set_hl(0, "DuoFloat", {bg = "#282c34", fg = "#abb2bf"})
-    vim.api.nvim_set_hl(0, "DuoBorder", {fg = "#667eea", bg = "#1e1e2e"})
-    vim.api.nvim_set_hl(0, "DuoTabActive", {fg = "#ffffff", bg = "#667eea", bold = true})
-    vim.api.nvim_set_hl(0, "DuoTabInactive", {fg = "#abb2bf", bg = "#2a2b3a"})
-    vim.api.nvim_set_hl(0, "DuoStreak", {fg = "#20c997", bold = true})
-    vim.api.nvim_set_hl(0, "DuoLevel", {fg = "#f39c12", bold = true})
-    vim.api.nvim_set_hl(0, "DuoKeystrokes", {fg = "#4ecdc4", bold = true})
-    
-    -- Apply highlights to buffer
-    vim.api.nvim_win_set_option(profile_window_state.win_id, "winhighlight", "Normal:DuoNormal,FloatBorder:DuoBorder")
+    -- Set highlighting for the floating window border
+    -- vim.api.nvim_win_set_option(profile_window_state.win_id, "winhighlight", "Normal:NormalFloat,FloatBorder:FloatBorder")
+    vim.api.nvim_set_hl(0, "NormalFloat", {bg = "#282c34"}) -- Background for window content
+    vim.api.nvim_set_hl(0, "FloatBorder", {fg = "#5a68a5", bg = "#282c34"}) -- Border color
 
     -- Keybindings for tab switching (within the floating window)
     vim.api.nvim_buf_set_keymap(profile_window_state.buf_id, "n", "<Tab>", [[<Cmd>lua require('duo').next_profile_tab()<CR>]], {noremap = true, silent = true})
