@@ -138,3 +138,10 @@ export NVM_DIR="$HOME/.nvm"
 export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
 export PATH=$JAVA_HOME/bin:$PATH
 export CHROME_EXECUTABLE=/usr/bin/brave
+
+# OpenClaw Completion
+#source <(openclaw completion --shell zsh)
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+nvm use 22
+export PATH="$HOME/.nvm/versions/node/v22.22.0/bin:$PATH"

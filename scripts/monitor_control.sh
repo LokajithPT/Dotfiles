@@ -94,7 +94,9 @@ while true; do
     echo -e "${YELLOW}DISPLAY LAYOUT:${NC}"
     echo "9) Mirror Screen (Projector Mode)"
     echo "10) Extend Screen (Default)"
-    echo ""
+    echo "11) speaker fix " 
+        echo ""
+
     echo "q) Quit"
     echo -e "${CYAN}===========================================${NC}"
     read -p "Select an option: " choice
@@ -157,6 +159,11 @@ while true; do
             echo -e "${GREEN}Done!${NC}"
             sleep 1
             ;;
+
+	11) 
+		echo "fixing speaker " 
+		amixer -c 0 sset PCM 100% 
+		;;	
         q|Q) echo "Exiting."; exit 0 ;;
         *) echo "Invalid option." ;;
     esac
