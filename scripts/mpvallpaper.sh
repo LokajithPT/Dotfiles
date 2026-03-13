@@ -83,8 +83,6 @@ apply_mpvpaper() {
     local monitor="$1"
     local wallpaper="$2"
     
-    pkill -f "mpvpaper ${monitor}" 2>/dev/null
-    
     if [ -f "${wallpaper}" ]; then
         case "${wallpaper}" in
             *.gif|*.mp4|*.webm|*.avi)
@@ -98,6 +96,9 @@ apply_mpvpaper() {
 }
 
 echo ":: applying wall :: \"${wallpaper_path}\""
+
+pkill -f "mpvpaper" 2>/dev/null
+sleep 0.3
 
 for monitor in $(get_monitors); do
     apply_mpvpaper "${monitor}" "${wallpaper_path}"

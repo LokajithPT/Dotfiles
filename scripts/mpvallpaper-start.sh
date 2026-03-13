@@ -13,8 +13,6 @@ start_mpvpaper() {
     local monitor="$1"
     local wallpaper="$2"
     
-    pkill -f "mpvpaper ${monitor}" 2>/dev/null
-    
     if [ -f "${wallpaper}" ]; then
         case "${wallpaper}" in
             *.gif|*.mp4|*.webm|*.avi)
@@ -26,6 +24,9 @@ start_mpvpaper() {
         esac
     fi
 }
+
+pkill -f "mpvpaper" 2>/dev/null
+sleep 0.3
 
 for monitor in $(get_monitors); do
     start_mpvpaper "${monitor}" "$(readlink -f "${wallpaper_path}")"
