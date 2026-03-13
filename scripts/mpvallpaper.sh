@@ -79,27 +79,32 @@ get_monitors() {
     hyprctl -j monitors | jq -r '.[] | .name'
 }
 
-apply_mpvpaper() {
+is_animated() {
+    case "${1}" in
+        *.gif|*.mp4|*.webm|*.avi) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+apply_wallpaper() {
     local monitor="$1"
     local wallpaper="$2"
     
     if [ -f "${wallpaper}" ]; then
-        case "${wallpaper}" in
-            *.gif|*.mp4|*.webm|*.avi)
-                mpvpaper -v -o "loop" "${monitor}" "${wallpaper}" &
-                ;;
-            *.jpg|*.jpeg|*.png)
-                mpvpaper -v -o "loop no-audio" "${monitor}" "${wallpaper}" &
-                ;;
-        esac
+        if is_animated "${wallpaper}"; then
+            mpvpaper -v -o "loop" "${monitor}" "${wallpaper}" &
+        else
+            swww img "${wallpaper}" --outputs "${monitor}" 2>/dev/null || swww img "${wallpaper}"
+        fi
     fi
 }
 
 echo ":: applying wall :: \"${wallpaper_path}\""
 
 pkill -f "mpvpaper" 2>/dev/null
+swww query 2>/dev/null || swww-daemon &
 sleep 0.3
 
 for monitor in $(get_monitors); do
-    apply_mpvpaper "${monitor}" "${wallpaper_path}"
+    apply_wallpaper "${monitor}" "${wallpaper_path}"
 done
